@@ -10,6 +10,7 @@ from loguru import logger
 
 from .base import BaseScraper
 from ..models.property import Property, PropertySearchResult
+from ..utils.text_parser import JapaneseTextParser
 
 
 class SuumoScraper(BaseScraper):
@@ -20,6 +21,7 @@ class SuumoScraper(BaseScraper):
             site_name="SUUMO",
             base_url="https://suumo.jp"
         )
+        self.parser = JapaneseTextParser()
         
     def search_properties(
         self,
@@ -87,16 +89,25 @@ class SuumoScraper(BaseScraper):
     def parse_property_details(self, property_data: Dict[str, Any]) -> Optional[Property]:
         """Parse individual property details."""
         try:
-            # Generate a unique ID (in production, extract from URL or page)
+            # Generate a unique ID
             property_id = f"suumo_{hash(property_data.get('url', ''))}"
             
-            # Extract rent (remove non-numeric characters)
-            rent_str = property_data.get('rent', '0')
-            rent = int(re.sub(r'[^0-9]', '', rent_str)) * 10000 if rent_str else 0
+            # Use parser for normalization
+            rent = self.parser.parse_rent(property_data.get('rent', ''))
+            area = self.parser.parse_area(property_data.get('area', ''))
+            floor_plan = self.parser.parse_floor_plan(property_data.get('floor_plan', ''))
             
-            # Extract area
-            area_str = property_data.get('area', '0')
-            area = float(re.sub(r'[^0-9.]', '', area_str)) if area_str else 0.0
+            # Parse station distance
+            station_distance = None
+            if property_data.get('station_info', {}).get('distance'):
+                station_distance = self.parser.parse_station_distance(
+                    property_data['station_info']['distance']
+                )
+            
+            # Extract address components
+            address_components = self.parser.extract_address_components(
+                property_data.get('address', '')
+            )
             
             return Property(
                 property_id=property_id,
@@ -104,13 +115,15 @@ class SuumoScraper(BaseScraper):
                 url=property_data.get('url', ''),
                 title=property_data.get('title', ''),
                 property_type="マンション",  # Would need to be determined from page
-                city="東京都",  # Would need to be extracted properly
+                prefecture=address_components.get('prefecture', '東京都'),
+                city=address_components.get('city', ''),
+                district=address_components.get('district'),
                 address=property_data.get('address', ''),
-                rent=rent,
-                floor_plan=property_data.get('floor_plan', ''),
-                area=area,
+                rent=rent or 0,
+                floor_plan=floor_plan,
+                area=area or 0.0,
                 nearest_station=property_data.get('station_info', {}).get('name'),
-                station_distance=property_data.get('station_info', {}).get('distance')
+                station_distance=station_distance
             )
         except Exception as e:
             logger.error(f"Error creating property object: {str(e)}")
