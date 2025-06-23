@@ -13,8 +13,11 @@ To gain practical experience in data engineering and data analysis through the c
 - Scrape property listings from major real estate portals (SUUMO, HOMES)
 - Target: Tokyo 23 wards rental properties
 - Data export in multiple formats (CSV, JSON, Parquet)
+- Data normalization and quality checks
+- Geocoding support (Google Maps API or free Nominatim)
+- AWS S3 upload integration
 - Rate limiting and respectful scraping
-- Comprehensive logging
+- Comprehensive logging with loguru
 - Modular architecture for easy extension
 
 ## 🚀 Quick Start / クイックスタート
@@ -48,12 +51,38 @@ python -m src.main
 # Specify areas and property types
 python -m src.main --areas 13113 13104 --property-types apartment
 
-# Export as JSON
+# Export as different formats
 python -m src.main --export-format json
+python -m src.main --export-format parquet
 
 # Limit pages per search
 python -m src.main --max-pages 3
+
+# Skip data processing (raw data only)
+python -m src.main --skip-processing
+
+# Enable geocoding (requires API key setup)
+python -m src.main --geocode
+
+# Upload to S3 (requires AWS credentials)
+python -m src.main --upload-s3
+
+# Full example with all features
+python -m src.main --sites SUUMO HOMES --areas 13113 --geocode --upload-s3
 ```
+
+### Command Line Options / コマンドラインオプション
+
+| Option | Description | Default |
+|--------|-------------|--------|
+| `--sites` | Sites to scrape (SUUMO, HOMES) | All sites |
+| `--areas` | Area codes to scrape (e.g., 13113 for Shibuya) | First 3 areas |
+| `--property-types` | Property types (apartment, apart, house) | All types |
+| `--max-pages` | Maximum pages per search | 5 |
+| `--export-format` | Export format (csv, json, parquet) | csv |
+| `--skip-processing` | Skip data normalization and quality checks | False |
+| `--geocode` | Enable address geocoding | False |
+| `--upload-s3` | Upload results to AWS S3 | False |
 
 ## 📁 Project Structure / プロジェクト構造
 
@@ -83,18 +112,47 @@ The project uses the following default settings:
 - **Rate Limiting**: 10 requests per 60 seconds
 - **Export Formats**: CSV, JSON, Parquet
 
-Settings can be modified in `src/config/settings.py` or via environment variables.
+Settings can be modified in `src/config/settings.py`.
+
+### Environment Variables / 環境変数
+
+For advanced features, create a `.env` file:
+
+```bash
+# Geocoding (optional)
+GOOGLE_MAPS_API_KEY=your_api_key_here
+
+# AWS S3 Upload (optional)
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=ap-northeast-1
+S3_BUCKET_NAME=your-bucket-name
+```
 
 ## 📊 Data Fields / データフィールド
 
 Scraped properties include:
 
-- Basic info: ID, URL, title, type
-- Location: Prefecture, city, address, coordinates
-- Price: Rent, management fee, deposit, key money
-- Specifications: Floor plan, area, floor, building age
-- Transportation: Nearest station, walking distance
-- Metadata: Scraping timestamp
+- **Basic info**: ID, URL, title, type
+- **Location**: Prefecture, city, address, coordinates (with geocoding)
+- **Price**: Rent, management fee, deposit, key money
+- **Specifications**: Floor plan, area, floor, building age
+- **Transportation**: Nearest station, walking distance
+- **Features**: Amenities and equipment
+- **Metadata**: Scraping timestamp
+
+### Data Processing Features / データ処理機能
+
+When processing is enabled (default), the system automatically:
+
+- **Normalizes Japanese text**: Converts full-width to half-width characters
+- **Standardizes formats**: 
+  - Floor plans: `１ＬＤＫ` → `1LDK`
+  - Rent: `12.5万円` → `125000`
+  - Area: `35.00㎡` → `35.0`
+- **Validates data quality**: Detects missing values, outliers, duplicates
+- **Generates quality score**: 0-100 score for data completeness
+- **Geocodes addresses**: Converts addresses to latitude/longitude (optional)
 
 ## 🛠️ Development / 開発
 

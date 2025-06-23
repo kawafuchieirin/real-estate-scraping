@@ -40,8 +40,11 @@
 ### 基本的な使用方法
 
 ```bash
-# データ処理を含むスクレイピング
-python -m src.main --process-data
+# データ処理を含むスクレイピング（デフォルト）
+python -m src.main
+
+# データ処理をスキップ（生データのみ）
+python -m src.main --skip-processing
 
 # ジオコーディングを有効化
 python -m src.main --geocode

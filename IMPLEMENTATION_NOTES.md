@@ -128,3 +128,21 @@ Set log level to DEBUG in `src/utils/logger.py` for detailed information:
 ```python
 logger.add(sys.stdout, level="DEBUG")
 ```
+
+## Recent Updates / 最近の更新
+
+### Command Line Interface Refactoring (2025-06-23)
+
+Changed the command line argument for skipping data processing:
+- **Old**: `--no-processing` 
+- **New**: `--skip-processing`
+
+This change improves clarity by using a more intuitive flag name. The default behavior remains the same (data processing is enabled by default).
+
+### Documentation Updates
+
+Updated all documentation to reflect:
+- New command line options for geocoding and S3 upload
+- Data processing features (normalization, quality checks)
+- Correct usage examples
+- Environment variable configuration for API keys
