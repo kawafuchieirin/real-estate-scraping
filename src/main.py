@@ -8,6 +8,7 @@ from loguru import logger
 
 from .config.settings import settings
 from .scrapers.suumo import SuumoScraper
+from .scrapers.homes import HomesScraper
 from .models.property import Property
 from .utils.data_export import DataExporter
 from .utils.logger import setup_logger
@@ -43,7 +44,7 @@ def main(
     # Initialize scrapers
     scrapers = {
         'SUUMO': SuumoScraper(),
-        # Add more scrapers here as implemented
+        'HOMES': HomesScraper(),
     }
     
     all_properties = []

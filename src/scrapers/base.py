@@ -12,6 +12,7 @@ from ratelimit import limits, sleep_and_retry
 
 from ..config.settings import settings
 from ..models.property import Property, PropertySearchResult
+from ..utils.robots_parser import RobotsChecker
 
 
 class BaseScraper(ABC):
@@ -21,6 +22,7 @@ class BaseScraper(ABC):
         self.site_name = site_name
         self.base_url = base_url
         self.session = self._create_session()
+        self.robots_checker = RobotsChecker(settings.USER_AGENT)
         
     def _create_session(self) -> requests.Session:
         """Create a requests session with appropriate headers."""
@@ -54,17 +56,22 @@ class BaseScraper(ABC):
     def check_robots_txt(self, robots_url: str) -> bool:
         """Check if scraping is allowed according to robots.txt."""
         try:
-            response = self._make_request(robots_url)
-            if response:
-                content = response.text.lower()
-                # Simple check - in production, use robotparser
-                if 'user-agent: *' in content and 'disallow: /' in content:
-                    logger.warning(f"Robots.txt disallows scraping for {self.site_name}")
-                    return False
+            # Check if we can fetch the base URL
+            can_fetch = self.robots_checker.can_fetch(self.base_url)
+            
+            if not can_fetch:
+                logger.warning(f"Robots.txt disallows scraping for {self.site_name}")
+                return False
+            
+            # Check crawl delay
+            crawl_delay = self.robots_checker.get_crawl_delay(self.base_url)
+            if crawl_delay:
+                logger.info(f"Robots.txt specifies crawl delay of {crawl_delay} seconds for {self.site_name}")
+            
             return True
         except Exception as e:
             logger.error(f"Failed to check robots.txt: {str(e)}")
-            return False
+            return True  # Allow on error
     
     @abstractmethod
     def search_properties(
