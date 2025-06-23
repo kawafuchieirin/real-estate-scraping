@@ -9,7 +9,7 @@ This is a real estate scraping repository (不動産スクレイピングのリ�
 ## Development Status
 
 The project now has:
-- **Technology Stack**: Python 3.8+ with BeautifulSoup, Requests, and Selenium
+- **Technology Stack**: Python 3.12+ with BeautifulSoup, Requests, and Selenium
 - **Project Structure**: Modular architecture with scrapers, models, utils, and config
 - **Dependencies**: Defined in requirements.txt
 - **Data Models**: Pydantic models for property data

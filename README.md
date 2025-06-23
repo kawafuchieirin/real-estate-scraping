@@ -21,7 +21,7 @@ To gain practical experience in data engineering and data analysis through the c
 
 ### Prerequisites / 前提条件
 
-- Python 3.8+
+- Python 3.12+
 - pip
 
 ### Installation / インストール
