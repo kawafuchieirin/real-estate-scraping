@@ -1,0 +1,284 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Glue and Athena infrastructure for real estate data analysis'
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: S3 bucket name containing the real estate data
+    Default: real-estate-data
+  
+  DataPrefix:
+    Type: String
+    Description: S3 prefix for cleaned data
+    Default: cleaned/tokyo/
+  
+  GlueDatabaseName:
+    Type: String
+    Description: Name for the Glue database
+    Default: real_estate_db
+  
+  CrawlerName:
+    Type: String
+    Description: Name for the Glue Crawler
+    Default: real-estate-crawler
+
+Resources:
+  # Glue Database
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Ref GlueDatabaseName
+        Description: Database for real estate property data from Japanese portals
+
+  # IAM Role for Glue Crawler
+  GlueCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${CrawlerName}-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - glue.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${S3BucketName}'
+                  - !Sub 'arn:aws:s3:::${S3BucketName}/*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  # Glue Crawler
+  GlueCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Ref CrawlerName
+      Role: !GetAtt GlueCrawlerRole.Arn
+      DatabaseName: !Ref GlueDatabase
+      Description: Crawler for real estate data in S3
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${S3BucketName}/${DataPrefix}'
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: LOG
+      Configuration: |
+        {
+          "Version": 1.0,
+          "CrawlerOutput": {
+            "Partitions": {
+              "AddOrUpdateBehavior": "InheritFromTable"
+            }
+          }
+        }
+      Schedule:
+        # Run daily at 2 AM JST (5 PM UTC)
+        ScheduleExpression: 'cron(0 17 * * ? *)'
+
+  # Athena Workgroup for cost tracking and query management
+  AthenaWorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: real-estate-analysis
+      Description: Workgroup for real estate data analysis
+      WorkGroupConfiguration:
+        ResultConfigurationUpdates:
+          OutputLocation: !Sub 's3://${S3BucketName}/athena-results/'
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        EngineVersion:
+          SelectedEngineVersion: 'Athena engine version 3'
+
+  # Athena Named Queries for common analysis patterns
+  AvgRentByWardQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: Average Rent by Ward
+      Description: Calculate average rent by Tokyo ward
+      Database: !Ref GlueDatabaseName
+      QueryString: !Sub |
+        SELECT 
+          city as ward,
+          property_type,
+          COUNT(*) as property_count,
+          AVG(rent) as avg_rent,
+          MIN(rent) as min_rent,
+          MAX(rent) as max_rent,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rent) as median_rent
+        FROM ${GlueDatabaseName}.tokyo_properties
+        WHERE rent > 0
+        GROUP BY city, property_type
+        ORDER BY avg_rent DESC;
+      WorkGroup: !Ref AthenaWorkGroup
+
+  StationDistanceAnalysisQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: Property Analysis by Station Distance
+      Description: Analyze properties by walking distance to station
+      Database: !Ref GlueDatabaseName
+      QueryString: !Sub |
+        SELECT 
+          CASE 
+            WHEN station_distance <= 5 THEN '0-5 minutes'
+            WHEN station_distance <= 10 THEN '6-10 minutes'
+            WHEN station_distance <= 15 THEN '11-15 minutes'
+            ELSE '15+ minutes'
+          END as distance_range,
+          COUNT(*) as property_count,
+          AVG(area) as avg_area,
+          AVG(rent) as avg_rent,
+          AVG(rent / area) as avg_rent_per_sqm
+        FROM ${GlueDatabaseName}.tokyo_properties
+        WHERE station_distance IS NOT NULL
+        GROUP BY 
+          CASE 
+            WHEN station_distance <= 5 THEN '0-5 minutes'
+            WHEN station_distance <= 10 THEN '6-10 minutes'
+            WHEN station_distance <= 15 THEN '11-15 minutes'
+            ELSE '15+ minutes'
+          END
+        ORDER BY 
+          CASE distance_range
+            WHEN '0-5 minutes' THEN 1
+            WHEN '6-10 minutes' THEN 2
+            WHEN '11-15 minutes' THEN 3
+            ELSE 4
+          END;
+      WorkGroup: !Ref AthenaWorkGroup
+
+  BuildingAgeDistributionQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: Building Age Distribution
+      Description: Distribution of properties by building age
+      Database: !Ref GlueDatabaseName
+      QueryString: !Sub |
+        WITH age_buckets AS (
+          SELECT 
+            property_id,
+            rent,
+            area,
+            CASE 
+              WHEN building_age <= 5 THEN '0-5 years'
+              WHEN building_age <= 10 THEN '6-10 years'
+              WHEN building_age <= 20 THEN '11-20 years'
+              WHEN building_age <= 30 THEN '21-30 years'
+              ELSE '30+ years'
+            END as age_range
+          FROM ${GlueDatabaseName}.tokyo_properties
+          WHERE building_age IS NOT NULL
+        )
+        SELECT 
+          age_range,
+          COUNT(*) as property_count,
+          AVG(rent) as avg_rent,
+          AVG(area) as avg_area,
+          AVG(rent / area) as avg_rent_per_sqm
+        FROM age_buckets
+        GROUP BY age_range
+        ORDER BY 
+          CASE age_range
+            WHEN '0-5 years' THEN 1
+            WHEN '6-10 years' THEN 2
+            WHEN '11-20 years' THEN 3
+            WHEN '21-30 years' THEN 4
+            ELSE 5
+          END;
+      WorkGroup: !Ref AthenaWorkGroup
+
+  FloorPlanAnalysisQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: Floor Plan Analysis
+      Description: Analyze properties by floor plan type
+      Database: !Ref GlueDatabaseName
+      QueryString: !Sub |
+        SELECT 
+          floor_plan,
+          COUNT(*) as property_count,
+          AVG(rent) as avg_rent,
+          AVG(area) as avg_area,
+          MIN(rent) as min_rent,
+          MAX(rent) as max_rent,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rent) as median_rent
+        FROM ${GlueDatabaseName}.tokyo_properties
+        WHERE floor_plan IS NOT NULL
+        GROUP BY floor_plan
+        ORDER BY property_count DESC
+        LIMIT 20;
+      WorkGroup: !Ref AthenaWorkGroup
+
+  PricePerSqmByLocationQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: Price per Square Meter by Location
+      Description: Calculate average rent per square meter by ward
+      Database: !Ref GlueDatabaseName
+      QueryString: !Sub |
+        SELECT 
+          city as ward,
+          COUNT(*) as property_count,
+          AVG(rent / area) as avg_rent_per_sqm,
+          MIN(rent / area) as min_rent_per_sqm,
+          MAX(rent / area) as max_rent_per_sqm,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rent / area) as median_rent_per_sqm
+        FROM ${GlueDatabaseName}.tokyo_properties
+        WHERE rent > 0 AND area > 0
+        GROUP BY city
+        HAVING COUNT(*) >= 10
+        ORDER BY avg_rent_per_sqm DESC;
+      WorkGroup: !Ref AthenaWorkGroup
+
+Outputs:
+  GlueDatabaseName:
+    Description: Name of the Glue database
+    Value: !Ref GlueDatabase
+    Export:
+      Name: !Sub '${AWS::StackName}-GlueDatabase'
+
+  GlueCrawlerName:
+    Description: Name of the Glue Crawler
+    Value: !Ref GlueCrawler
+    Export:
+      Name: !Sub '${AWS::StackName}-GlueCrawler'
+
+  AthenaWorkGroupName:
+    Description: Name of the Athena WorkGroup
+    Value: !Ref AthenaWorkGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-AthenaWorkGroup'
+
+  GlueCrawlerRoleArn:
+    Description: ARN of the Glue Crawler IAM role
+    Value: !GetAtt GlueCrawlerRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GlueCrawlerRoleArn'
+
+  SampleQueryInstructions:
+    Description: Instructions for running sample queries
+    Value: !Sub |
+      To run the sample queries:
+      1. Open the Athena console
+      2. Select workgroup: ${AthenaWorkGroup}
+      3. Select database: ${GlueDatabaseName}
+      4. Navigate to "Saved queries" to find the pre-defined analysis queries

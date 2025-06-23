@@ -1,0 +1,268 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Explicit Glue table schema definition for real estate data'
+
+Parameters:
+  GlueDatabaseName:
+    Type: String
+    Description: Name of the Glue database
+    Default: real_estate_db
+  
+  S3BucketName:
+    Type: String
+    Description: S3 bucket name containing the real estate data
+    Default: real-estate-data
+  
+  DataPrefix:
+    Type: String
+    Description: S3 prefix for cleaned data
+    Default: cleaned/tokyo/
+
+Resources:
+  # Explicit table definition for real estate properties
+  RealEstateTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabaseName
+      TableInput:
+        Name: tokyo_properties
+        Description: Tokyo real estate property listings
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          compressionType: snappy
+          typeOfData: file
+        StorageDescriptor:
+          Columns:
+            # Basic identification
+            - Name: property_id
+              Type: string
+              Comment: Unique property identifier
+            - Name: site_name
+              Type: string
+              Comment: Source website name
+            - Name: url
+              Type: string
+              Comment: Property listing URL
+            
+            # Property details
+            - Name: title
+              Type: string
+              Comment: Property listing title
+            - Name: property_type
+              Type: string
+              Comment: Type of property (マンション, アパート, 一戸建て)
+            
+            # Location fields
+            - Name: prefecture
+              Type: string
+              Comment: Prefecture (都道府県)
+            - Name: city
+              Type: string
+              Comment: City/Ward (市区町村)
+            - Name: district
+              Type: string
+              Comment: District/Area (地区)
+            - Name: address
+              Type: string
+              Comment: Full address
+            - Name: latitude
+              Type: double
+              Comment: Latitude coordinate
+            - Name: longitude
+              Type: double
+              Comment: Longitude coordinate
+            
+            # Price information (mapped from issue requirements)
+            - Name: rent
+              Type: int
+              Comment: Monthly rent in JPY (mapped to price)
+            - Name: management_fee
+              Type: int
+              Comment: Management fee in JPY
+            - Name: deposit
+              Type: int
+              Comment: Deposit amount in JPY
+            - Name: key_money
+              Type: int
+              Comment: Key money in JPY
+            
+            # Property specifications
+            - Name: floor_plan
+              Type: string
+              Comment: Floor plan layout (1K, 1LDK, etc.) - mapped to layout
+            - Name: area
+              Type: double
+              Comment: Floor area in square meters
+            - Name: floor_number
+              Type: int
+              Comment: Floor number
+            - Name: total_floors
+              Type: int
+              Comment: Total floors in building
+            - Name: building_age
+              Type: int
+              Comment: Building age in years
+            - Name: construction_year
+              Type: int
+              Comment: Year of construction (mapped to year_built)
+            
+            # Transportation
+            - Name: nearest_station
+              Type: string
+              Comment: Nearest station name
+            - Name: station_distance
+              Type: int
+              Comment: Walking distance to station in minutes (mapped to walk_time_to_station)
+            - Name: train_lines
+              Type: array<string>
+              Comment: Available train lines
+            
+            # Additional features
+            - Name: features
+              Type: array<string>
+              Comment: Property features and amenities
+            
+            # Metadata
+            - Name: scraped_at
+              Type: timestamp
+              Comment: Timestamp when data was scraped (mapped to date)
+            - Name: updated_at
+              Type: timestamp
+              Comment: Last update timestamp
+            
+          Location: !Sub 's3://${S3BucketName}/${DataPrefix}'
+          InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+            Parameters:
+              serialization.format: '1'
+          Compressed: true
+          StoredAsSubDirectories: false
+        PartitionKeys:
+          - Name: year
+            Type: string
+            Comment: Year partition (YYYY)
+          - Name: month
+            Type: string
+            Comment: Month partition (MM)
+          - Name: day
+            Type: string
+            Comment: Day partition (DD)
+
+  # Alternative CSV table if data is stored as CSV
+  RealEstateTableCSV:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabaseName
+      TableInput:
+        Name: tokyo_properties_csv
+        Description: Tokyo real estate property listings (CSV format)
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: csv
+          typeOfData: file
+          skip.header.line.count: '1'
+        StorageDescriptor:
+          Columns:
+            # Same column definitions as above
+            - Name: property_id
+              Type: string
+            - Name: site_name
+              Type: string
+            - Name: url
+              Type: string
+            - Name: title
+              Type: string
+            - Name: property_type
+              Type: string
+            - Name: prefecture
+              Type: string
+            - Name: city
+              Type: string
+            - Name: district
+              Type: string
+            - Name: address
+              Type: string
+            - Name: latitude
+              Type: double
+            - Name: longitude
+              Type: double
+            - Name: rent
+              Type: int
+            - Name: management_fee
+              Type: int
+            - Name: deposit
+              Type: int
+            - Name: key_money
+              Type: int
+            - Name: floor_plan
+              Type: string
+            - Name: area
+              Type: double
+            - Name: floor_number
+              Type: int
+            - Name: total_floors
+              Type: int
+            - Name: building_age
+              Type: int
+            - Name: construction_year
+              Type: int
+            - Name: nearest_station
+              Type: string
+            - Name: station_distance
+              Type: int
+            - Name: train_lines
+              Type: string
+            - Name: features
+              Type: string
+            - Name: scraped_at
+              Type: timestamp
+            - Name: updated_at
+              Type: timestamp
+          Location: !Sub 's3://${S3BucketName}/${DataPrefix}csv/'
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+            Parameters:
+              field.delim: ','
+              serialization.format: ','
+          Compressed: false
+          StoredAsSubDirectories: false
+        PartitionKeys:
+          - Name: year
+            Type: string
+          - Name: month
+            Type: string
+          - Name: day
+            Type: string
+
+Outputs:
+  ParquetTableName:
+    Description: Name of the Parquet format table
+    Value: !Ref RealEstateTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ParquetTable'
+
+  CSVTableName:
+    Description: Name of the CSV format table
+    Value: !Ref RealEstateTableCSV
+    Export:
+      Name: !Sub '${AWS::StackName}-CSVTable'
+
+  FieldMapping:
+    Description: Mapping between issue requirements and actual field names
+    Value: |
+      Field Mapping Reference:
+      - price → rent (int)
+      - area → area (float)
+      - layout → floor_plan (string)
+      - year_built → construction_year (int)
+      - walk_time_to_station → station_distance (int)
+      - latitude → latitude (float)
+      - longitude → longitude (float)
+      - date → scraped_at (timestamp)
+      - address → address (string)
