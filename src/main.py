@@ -19,7 +19,10 @@ def main(
     areas: List[str] = None,
     property_types: List[str] = None,
     max_pages: int = 5,
-    export_format: str = 'csv'
+    export_format: str = 'csv',
+    process_data: bool = True,
+    apply_geocoding: bool = False,
+    upload_to_s3: bool = False
 ):
     """
     Main function to orchestrate the scraping process.
@@ -30,6 +33,9 @@ def main(
         property_types: List of property type codes
         max_pages: Maximum number of pages to scrape per search
         export_format: Export format (csv, json, parquet)
+        process_data: Whether to apply data normalization and quality checks
+        apply_geocoding: Whether to geocode addresses
+        upload_to_s3: Whether to upload results to S3
     """
     logger.info("Starting real estate scraping")
     
@@ -87,19 +93,38 @@ def main(
     if all_properties:
         exporter = DataExporter()
         
-        if export_format == 'csv':
-            filepath = exporter.export_to_csv(all_properties)
-        elif export_format == 'json':
-            filepath = exporter.export_to_json(all_properties)
-        elif export_format == 'parquet':
-            filepath = exporter.export_to_parquet(all_properties)
-        else:
-            logger.error(f"Unknown export format: {export_format}")
-            return
+        if process_data:
+            # Use the new process_and_export method with all features
+            logger.info("Processing data with normalization, quality checks, and optional geocoding...")
+            result = exporter.process_and_export(
+                all_properties,
+                export_format=export_format,
+                apply_geocoding=apply_geocoding,
+                upload_to_s3=upload_to_s3
+            )
             
-        # Create summary report
-        summary = exporter.create_summary_report(all_properties)
-        logger.info(f"Scraping completed. Total properties: {summary['total_properties']}")
+            logger.info(f"Processing completed:")
+            logger.info(f"  - Records processed: {result['records_processed']}")
+            logger.info(f"  - Quality score: {result['quality_score']}/100")
+            logger.info(f"  - Local file: {result['local_path']}")
+            if result['s3_path']:
+                logger.info(f"  - S3 path: {result['s3_path']}")
+                
+        else:
+            # Use traditional export without processing
+            if export_format == 'csv':
+                filepath = exporter.export_to_csv(all_properties)
+            elif export_format == 'json':
+                filepath = exporter.export_to_json(all_properties)
+            elif export_format == 'parquet':
+                filepath = exporter.export_to_parquet(all_properties)
+            else:
+                logger.error(f"Unknown export format: {export_format}")
+                return
+                
+            # Create summary report
+            summary = exporter.create_summary_report(all_properties)
+            logger.info(f"Scraping completed. Total properties: {summary['total_properties']}")
     else:
         logger.warning("No properties were scraped")
 
@@ -133,6 +158,21 @@ if __name__ == "__main__":
         default='csv',
         help="Export format for scraped data"
     )
+    parser.add_argument(
+        "--no-processing",
+        action="store_true",
+        help="Skip data normalization and quality checks"
+    )
+    parser.add_argument(
+        "--geocode",
+        action="store_true",
+        help="Enable geocoding of addresses (requires API key)"
+    )
+    parser.add_argument(
+        "--upload-s3",
+        action="store_true",
+        help="Upload results to S3 (requires AWS credentials)"
+    )
     
     args = parser.parse_args()
     
@@ -141,5 +181,8 @@ if __name__ == "__main__":
         areas=args.areas,
         property_types=args.property_types,
         max_pages=args.max_pages,
-        export_format=args.export_format
+        export_format=args.export_format,
+        process_data=not args.no_processing,
+        apply_geocoding=args.geocode,
+        upload_to_s3=args.upload_s3
     )
