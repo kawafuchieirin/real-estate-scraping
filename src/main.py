@@ -159,9 +159,9 @@ if __name__ == "__main__":
         help="Export format for scraped data"
     )
     parser.add_argument(
-        "--no-processing",
+        "--skip-processing",
         action="store_true",
-        help="Skip data normalization and quality checks"
+        help="Skip data normalization and quality checks (default: process data)"
     )
     parser.add_argument(
         "--geocode",
@@ -182,7 +182,7 @@ if __name__ == "__main__":
         property_types=args.property_types,
         max_pages=args.max_pages,
         export_format=args.export_format,
-        process_data=not args.no_processing,
+        process_data=not args.skip_processing,
         apply_geocoding=args.geocode,
         upload_to_s3=args.upload_s3
     )

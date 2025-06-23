@@ -19,10 +19,12 @@ def example_basic_scraping():
     logger.info("=== Basic Scraping Example ===")
     
     # Scrape with default settings (first 3 areas, all property types)
+    # Data processing is enabled by default
     main(
         sites=['SUUMO'],
         max_pages=2,
-        export_format='csv'
+        export_format='csv',
+        process_data=True  # Default behavior
     )
 
 
@@ -105,6 +107,38 @@ def show_available_options():
     print("  - parquet: Apache Parquet (for big data processing)")
 
 
+def example_with_processing():
+    """Example with data processing and geocoding."""
+    logger.info("=== Data Processing Example ===")
+    
+    # Scrape with data processing and geocoding enabled
+    main(
+        sites=['SUUMO'],
+        areas=['13113'],  # Shibuya
+        property_types=['apartment'],
+        max_pages=1,
+        export_format='csv',
+        process_data=True,
+        apply_geocoding=False,  # Set to True if you have API key
+        upload_to_s3=False     # Set to True if you have AWS credentials
+    )
+
+
+def example_raw_data():
+    """Example without data processing - raw data only."""
+    logger.info("=== Raw Data Example ===")
+    
+    # Scrape without processing for raw data
+    main(
+        sites=['SUUMO'],
+        areas=['13104'],  # Shinjuku
+        property_types=['apart'],
+        max_pages=1,
+        export_format='json',
+        process_data=False  # Skip normalization and quality checks
+    )
+
+
 if __name__ == "__main__":
     # Show available options
     show_available_options()
@@ -118,5 +152,8 @@ if __name__ == "__main__":
     # example_specific_area()
     # example_all_areas()
     # example_custom_export()
+    # example_with_processing()
+    # example_raw_data()
     
     print("\nScraping completed! Check the data/ directory for output files.")
+    print("\nNote: To enable geocoding or S3 upload, set up the required API keys and credentials in .env file.")
