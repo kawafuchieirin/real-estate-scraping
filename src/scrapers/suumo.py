@@ -101,26 +101,23 @@ class SuumoScraper(BaseScraper):
         """Parse property list from SUUMO search results."""
         properties = []
         
-        # PLACEHOLDER IMPLEMENTATION - Needs real CSS selectors
-        logger.warning("SUUMO scraper is using placeholder CSS selectors. Please update with actual selectors from SUUMO website.")
-        logger.info("To fix: Inspect SUUMO's HTML and update selectors like 'div.property-unit' with real ones")
-        
-        # This is a placeholder - actual selectors would need to be determined
-        # by inspecting SUUMO's HTML structure
-        property_items = soup.find_all('div', class_='property-unit')
+        # Look for property items with multiple possible selectors
+        property_items = soup.find_all('div', class_='cassetteitem')
+        if not property_items:
+            property_items = soup.find_all('div', class_='property_unit')
+        if not property_items:
+            property_items = soup.find_all('div', {'class': re.compile(r'js-cassette_link')})
         
         if not property_items:
-            logger.info("No properties found. This is expected with placeholder selectors.")
-            logger.info("Next steps:")
-            logger.info("1. Visit https://suumo.jp and search for properties in Tokyo")
-            logger.info("2. Inspect the HTML to find the actual CSS selectors")
-            logger.info("3. Update this scraper with the correct selectors")
+            logger.info("No properties found with standard selectors. Trying alternative patterns.")
+            # Try to find property containers
+            property_items = soup.find_all('div', {'class': re.compile(r'cassette|property|item', re.I)})[:20]
             
         for item in property_items:
             try:
                 prop_data = {
-                    'url': item.find('a')['href'] if item.find('a') else None,
-                    'title': item.find('h2', class_='property-title').text.strip() if item.find('h2') else '',
+                    'url': self._extract_url(item),
+                    'title': self._extract_title(item),
                     'rent': self._extract_price(item),
                     'floor_plan': self._extract_floor_plan(item),
                     'area': self._extract_area(item),
@@ -177,40 +174,102 @@ class SuumoScraper(BaseScraper):
             logger.error(f"Error creating property object: {str(e)}")
             return None
     
+    def _extract_url(self, item: BeautifulSoup) -> str:
+        """Extract property URL."""
+        # Try multiple possible link selectors
+        link = item.find('a', class_='js-cassette_link_href')
+        if not link:
+            link = item.find('a', class_='js-property_link')
+        if not link:
+            link = item.find('a', href=re.compile(r'/chintai/.*/'))
+        
+        if link and link.get('href'):
+            href = link['href']
+            if href.startswith('http'):
+                return href
+            return self.base_url + href
+        return ''
+    
+    def _extract_title(self, item: BeautifulSoup) -> str:
+        """Extract property title."""
+        # Try multiple possible title selectors
+        title_elem = item.find('div', class_='cassetteitem_content-title')
+        if not title_elem:
+            title_elem = item.find('h2', class_='property-title')
+        if not title_elem:
+            title_elem = item.find(['h2', 'h3'], text=re.compile(r'.{5,}'))  # At least 5 chars
+        return title_elem.text.strip() if title_elem else ''
+    
     def _extract_price(self, item: BeautifulSoup) -> str:
         """Extract price from property item."""
-        # Placeholder - actual selector would need to be determined
-        price_elem = item.find('span', class_='price')
+        # Try multiple possible price selectors
+        price_elem = item.find('span', class_='cassetteitem_price--rent')
+        if not price_elem:
+            price_elem = item.find('span', class_='ui-text--bold')
+        if not price_elem:
+            price_elem = item.find('div', class_='cassetteitem_other-emphasis')
+        if not price_elem:
+            # Look for text containing 万円
+            price_elem = item.find(text=re.compile(r'\d+\.?\d*万円'))
+            if price_elem:
+                return price_elem.strip()
         return price_elem.text.strip() if price_elem else '0'
     
     def _extract_floor_plan(self, item: BeautifulSoup) -> str:
         """Extract floor plan from property item."""
-        # Placeholder - actual selector would need to be determined
-        plan_elem = item.find('span', class_='floor-plan')
+        # Try multiple possible floor plan selectors
+        plan_elem = item.find('span', class_='cassetteitem_madori')
+        if not plan_elem:
+            plan_elem = item.find('td', class_='cassetteitem_madori')
+        if not plan_elem:
+            # Look for text containing common floor plan patterns
+            plan_elem = item.find(text=re.compile(r'\d[LDK]|\d[SLDK]|ワンルーム'))
+            if plan_elem:
+                return plan_elem.strip()
         return plan_elem.text.strip() if plan_elem else ''
     
     def _extract_area(self, item: BeautifulSoup) -> str:
         """Extract area from property item."""
-        # Placeholder - actual selector would need to be determined
-        area_elem = item.find('span', class_='area')
+        # Try multiple possible area selectors
+        area_elem = item.find('span', class_='cassetteitem_menseki')
+        if not area_elem:
+            area_elem = item.find('td', class_='cassetteitem_menseki')
+        if not area_elem:
+            # Look for text containing m²
+            area_elem = item.find(text=re.compile(r'\d+\.?\d*m²|\d+\.?\d*㎡'))
+            if area_elem:
+                return area_elem.strip()
         return area_elem.text.strip() if area_elem else '0'
     
     def _extract_address(self, item: BeautifulSoup) -> str:
         """Extract address from property item."""
-        # Placeholder - actual selector would need to be determined
-        addr_elem = item.find('span', class_='address')
+        # Try multiple possible address selectors
+        addr_elem = item.find('div', class_='cassetteitem_detail-col1')
+        if not addr_elem:
+            addr_elem = item.find('td', class_='cassetteitem_detail-col1')
+        if not addr_elem:
+            # Look for text containing 東京都
+            addr_elem = item.find(text=re.compile(r'東京都.*[区市]'))
+            if addr_elem:
+                return addr_elem.strip()
         return addr_elem.text.strip() if addr_elem else ''
     
     def _extract_station_info(self, item: BeautifulSoup) -> Dict[str, Any]:
         """Extract station information from property item."""
-        # Placeholder - actual implementation would parse station name and walking distance
-        station_elem = item.find('div', class_='station-info')
+        # Try multiple possible station info selectors
+        station_elem = item.find('div', class_='cassetteitem_detail-text')
+        if not station_elem:
+            station_elem = item.find('div', class_='cassetteitem_detail-col2')
+        
         if station_elem:
-            # Parse station name and distance
-            return {
-                'name': 'Station Name',
-                'distance': 10  # Walking minutes
-            }
+            text = station_elem.text
+            # Extract station name and walking time
+            match = re.search(r'(.+?駅?).*?歩(\d+)分', text)
+            if match:
+                return {
+                    'name': match.group(1).strip(),
+                    'distance': f"徒歩{match.group(2)}分"
+                }
         return {}
     
     def _convert_demo_to_property(self, demo_data: Dict[str, Any]) -> Property:

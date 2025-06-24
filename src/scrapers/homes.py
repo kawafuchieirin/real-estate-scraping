@@ -41,28 +41,28 @@ class HomesScraper(BaseScraper):
                 has_next_page=False
             )
         
-        # Note: This is a placeholder implementation
-        # Actual URLs and parsing logic would need to be implemented based on HOMES's structure
-        
         # Map property types to HOMES format
         type_mapping = {
-            'apartment': 'mansion',
-            'apart': 'apart',
-            'house': 'kodate'
+            'apartment': '1101',  # マンション
+            'apart': '1103',      # アパート
+            'house': '1201'       # 一戸建て
         }
         
-        property_type_code = type_mapping.get(property_type['code'], 'mansion')
+        property_type_code = type_mapping.get(property_type['code'], '1101')
         
-        # Construct search URL (this is an example - actual URL structure may differ)
-        # The current pattern returns 404 errors and likely needs to be updated
-        search_url = f"{self.base_url}/chintai/{property_type_code}/tokyo/{area['code']}/"
-        if page > 1:
-            search_url += f"?page={page}"
+        # Construct search URL with correct HOMES format
+        # HOMES uses a different URL structure with parameters
+        search_url = f"{self.base_url}/chintai/tokyo/city/{area['code']}-t/"
+        
+        # Build query parameters
+        params = {
+            'bek': property_type_code,  # Building type code
+            'p': page                    # Page number
+        }
+        
+        logger.info(f"Searching HOMES at: {search_url} with params: {params}")
             
-        logger.warning(f"Using placeholder URL pattern: {search_url}")
-        logger.info("If this returns 404, the URL pattern needs to be updated based on HOMES's actual URL structure")
-            
-        response = self._make_request(search_url)
+        response = self._make_request(search_url, params=params)
         if not response:
             return None
             
@@ -88,21 +88,17 @@ class HomesScraper(BaseScraper):
         """Parse property list from HOMES search results."""
         properties = []
         
-        # PLACEHOLDER IMPLEMENTATION - Needs real CSS selectors
-        logger.warning("HOMES scraper is using placeholder CSS selectors. Please update with actual selectors from HOMES website.")
-        logger.info("To fix: Inspect HOMES's HTML and update selectors like 'div.mod-mergeBuilding' with real ones")
-        
-        # This is a placeholder - actual selectors would need to be determined
-        # by inspecting HOMES's HTML structure
-        property_items = soup.find_all('div', class_='mod-mergeBuilding')
+        # Look for property items with multiple possible selectors
+        property_items = soup.find_all('div', class_='bukkenList')
+        if not property_items:
+            property_items = soup.find_all('div', class_='propertyBlock')
+        if not property_items:
+            property_items = soup.find_all('article', class_='property-item')
         
         if not property_items:
-            logger.info("No properties found. This is expected with placeholder selectors.")
-            logger.info("Next steps:")
-            logger.info("1. Visit https://www.homes.co.jp and search for properties in Tokyo")
-            logger.info("2. Verify the correct URL pattern (current pattern may be incorrect)")
-            logger.info("3. Inspect the HTML to find the actual CSS selectors")
-            logger.info("4. Update this scraper with the correct URL pattern and selectors")
+            logger.info("No properties found. Checking if page structure changed.")
+            # Try to find any common property container patterns
+            property_items = soup.find_all('div', {'class': re.compile(r'property|bukken|item', re.I)})[:20]
             
         for item in property_items:
             try:
@@ -185,29 +181,69 @@ class HomesScraper(BaseScraper):
     
     def _extract_url(self, item: BeautifulSoup) -> str:
         """Extract property URL."""
+        # Try multiple possible link selectors
         link = item.find('a', class_='bukkenName')
+        if not link:
+            link = item.find('a', class_='property-link')
+        if not link:
+            link = item.find('a', href=re.compile(r'/chintai/.*/'))
+        
         if link and link.get('href'):
-            return self.base_url + link['href']
+            href = link['href']
+            if href.startswith('http'):
+                return href
+            return self.base_url + href
         return ''
     
     def _extract_title(self, item: BeautifulSoup) -> str:
         """Extract property title."""
+        # Try multiple possible title selectors
         title_elem = item.find('h2', class_='bukkenName')
+        if not title_elem:
+            title_elem = item.find('h3', class_='property-title')
+        if not title_elem:
+            title_elem = item.find(['h2', 'h3'], text=re.compile(r'.{5,}'))  # At least 5 chars
         return title_elem.text.strip() if title_elem else ''
     
     def _extract_rent(self, item: BeautifulSoup) -> str:
         """Extract rent amount."""
+        # Try multiple possible rent selectors
         rent_elem = item.find('span', class_='priceLabel')
+        if not rent_elem:
+            rent_elem = item.find('span', class_='price')
+        if not rent_elem:
+            rent_elem = item.find('div', class_='rent')
+        if not rent_elem:
+            # Look for text containing 万円
+            rent_elem = item.find(text=re.compile(r'\d+\.?\d*万円'))
+            if rent_elem:
+                return rent_elem.strip()
         return rent_elem.text.strip() if rent_elem else '0'
     
     def _extract_floor_plan(self, item: BeautifulSoup) -> str:
         """Extract floor plan."""
+        # Try multiple possible floor plan selectors
         plan_elem = item.find('span', class_='layout')
+        if not plan_elem:
+            plan_elem = item.find('span', class_='madori')
+        if not plan_elem:
+            # Look for text containing common floor plan patterns
+            plan_elem = item.find(text=re.compile(r'\d[LDK]|ワンルーム'))
+            if plan_elem:
+                return plan_elem.strip()
         return plan_elem.text.strip() if plan_elem else ''
     
     def _extract_area(self, item: BeautifulSoup) -> str:
         """Extract property area."""
+        # Try multiple possible area selectors
         area_elem = item.find('span', class_='space')
+        if not area_elem:
+            area_elem = item.find('span', class_='menseki')
+        if not area_elem:
+            # Look for text containing m²
+            area_elem = item.find(text=re.compile(r'\d+\.?\d*m²|\d+\.?\d*㎡'))
+            if area_elem:
+                return area_elem.strip()
         return area_elem.text.strip() if area_elem else '0'
     
     def _extract_address(self, item: BeautifulSoup) -> str:
