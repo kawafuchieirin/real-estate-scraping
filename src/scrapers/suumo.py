@@ -11,7 +11,6 @@ from loguru import logger
 from .base import BaseScraper
 from ..models.property import Property, PropertySearchResult
 from ..utils.text_parser import JapaneseTextParser
-from ..config.area_mapping import get_suumo_slug, is_suumo_slug
 
 
 class SuumoScraper(BaseScraper):
@@ -24,6 +23,24 @@ class SuumoScraper(BaseScraper):
         )
         self.parser = JapaneseTextParser()
         
+    def _build_search_params(self, area_code: str, page: int = 1) -> Dict[str, Any]:
+        """Build search query parameters for SUUMO.
+        
+        Args:
+            area_code: Area code (e.g., '13113' for Shibuya)
+            page: Page number (default: 1)
+            
+        Returns:
+            Dictionary of query parameters
+        """
+        return {
+            'ar': '030',        # 地域コード（首都圏）
+            'bs': '010',        # 種別コード（賃貸）
+            'ta': '13',         # 都道府県コード（東京都）
+            'sc': area_code,    # 市区町村コード
+            'page': page        # ページ番号
+        }
+    
     def search_properties(
         self,
         area: Dict[str, str],
@@ -31,29 +48,23 @@ class SuumoScraper(BaseScraper):
         page: int = 1
     ) -> Optional[PropertySearchResult]:
         """Search for properties on SUUMO."""
-        # Note: This is a placeholder implementation
-        # Actual URLs and parsing logic would need to be implemented based on SUUMO's structure
+        # Note: Using new parameter-based URL format
         
-        # Convert area code to SUUMO slug
-        try:
-            area_identifier = area['code']
-            if is_suumo_slug(area_identifier):
-                # Already a slug, use as-is
-                slug = area_identifier
-            else:
-                # Convert area code to slug
-                slug = get_suumo_slug(area_identifier)
-                logger.debug(f"Converted area code {area_identifier} to SUUMO slug {slug}")
-        except KeyError as e:
-            logger.error(f"Area code '{area['code']}' not supported by SUUMO: {str(e)}")
+        area_code = area['code']
+        
+        # Build search URL with new format
+        search_url = f"{self.base_url}/jj/bukken/ichiran/JJ011FC001/"
+        
+        # Check robots.txt compliance for new URL path
+        if not self.robots_checker.can_fetch(search_url):
+            logger.warning(f"Robots.txt disallows fetching {search_url}")
             return None
         
-        # Construct search URL using slug format
-        search_url = f"{self.base_url}/chintai/tokyo/{slug}/"
-        if page > 1:
-            search_url += f"?page={page}"
+        # Build query parameters
+        params = self._build_search_params(area_code, page)
+        logger.debug(f"Searching SUUMO with params: {params}")
             
-        response = self._make_request(search_url)
+        response = self._make_request(search_url, params=params)
         if not response:
             return None
             
