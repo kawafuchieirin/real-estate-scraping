@@ -11,6 +11,7 @@ from loguru import logger
 from .base import BaseScraper
 from ..models.property import Property, PropertySearchResult
 from ..utils.text_parser import JapaneseTextParser
+from ..config.area_mapping import get_suumo_slug, is_suumo_slug
 
 
 class SuumoScraper(BaseScraper):
@@ -33,8 +34,22 @@ class SuumoScraper(BaseScraper):
         # Note: This is a placeholder implementation
         # Actual URLs and parsing logic would need to be implemented based on SUUMO's structure
         
-        # Construct search URL (this is an example - actual URL structure may differ)
-        search_url = f"{self.base_url}/chintai/tokyo/city/{area['code']}/"
+        # Convert area code to SUUMO slug
+        try:
+            area_identifier = area['code']
+            if is_suumo_slug(area_identifier):
+                # Already a slug, use as-is
+                slug = area_identifier
+            else:
+                # Convert area code to slug
+                slug = get_suumo_slug(area_identifier)
+                logger.debug(f"Converted area code {area_identifier} to SUUMO slug {slug}")
+        except KeyError as e:
+            logger.error(f"Area code '{area['code']}' not supported by SUUMO: {str(e)}")
+            return None
+        
+        # Construct search URL using slug format
+        search_url = f"{self.base_url}/chintai/tokyo/{slug}/"
         if page > 1:
             search_url += f"?page={page}"
             

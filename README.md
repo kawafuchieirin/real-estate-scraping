@@ -188,6 +188,7 @@ mypy src/
 2. **Rate Limiting**: Built-in rate limiting prevents overwhelming target servers
 3. **Legal Compliance**: Ensure compliance with website terms of service
 4. **Data Privacy**: Handle scraped data responsibly
+5. **SUUMO Area Codes**: SUUMO uses slug-based URLs (e.g., `sc_shibuya`) instead of standard area codes. The system automatically converts area codes to SUUMO slugs for Tokyo 23 wards. Direct slug input is also supported.
 
 ## 🗺️ Roadmap / ロードマップ
 
