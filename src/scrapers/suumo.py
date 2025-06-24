@@ -11,6 +11,7 @@ from loguru import logger
 from .base import BaseScraper
 from ..models.property import Property, PropertySearchResult
 from ..utils.text_parser import JapaneseTextParser
+from .demo_data import generate_demo_properties, is_demo_mode_enabled
 
 
 class SuumoScraper(BaseScraper):
@@ -48,6 +49,16 @@ class SuumoScraper(BaseScraper):
         page: int = 1
     ) -> Optional[PropertySearchResult]:
         """Search for properties on SUUMO."""
+        # Check if demo mode is enabled
+        if is_demo_mode_enabled():
+            logger.info("Demo mode enabled - returning demo data")
+            demo_properties = generate_demo_properties("SUUMO", area['code'], property_type['code'])
+            return PropertySearchResult(
+                properties=[self._convert_demo_to_property(p) for p in demo_properties],
+                total_count=len(demo_properties),
+                has_next_page=False
+            )
+        
         # Note: Using new parameter-based URL format
         
         area_code = area['code']
@@ -90,10 +101,21 @@ class SuumoScraper(BaseScraper):
         """Parse property list from SUUMO search results."""
         properties = []
         
+        # PLACEHOLDER IMPLEMENTATION - Needs real CSS selectors
+        logger.warning("SUUMO scraper is using placeholder CSS selectors. Please update with actual selectors from SUUMO website.")
+        logger.info("To fix: Inspect SUUMO's HTML and update selectors like 'div.property-unit' with real ones")
+        
         # This is a placeholder - actual selectors would need to be determined
         # by inspecting SUUMO's HTML structure
         property_items = soup.find_all('div', class_='property-unit')
         
+        if not property_items:
+            logger.info("No properties found. This is expected with placeholder selectors.")
+            logger.info("Next steps:")
+            logger.info("1. Visit https://suumo.jp and search for properties in Tokyo")
+            logger.info("2. Inspect the HTML to find the actual CSS selectors")
+            logger.info("3. Update this scraper with the correct selectors")
+            
         for item in property_items:
             try:
                 prop_data = {
@@ -190,3 +212,23 @@ class SuumoScraper(BaseScraper):
                 'distance': 10  # Walking minutes
             }
         return {}
+    
+    def _convert_demo_to_property(self, demo_data: Dict[str, Any]) -> Property:
+        """Convert demo data to Property model."""
+        return Property(
+            id=demo_data['id'],
+            url=demo_data['url'],
+            title=demo_data['title'],
+            rent=demo_data['rent'],
+            floor_plan=demo_data['floor_plan'],
+            area=demo_data['area'],
+            address=demo_data['address'],
+            station_info=demo_data['station_info'],
+            building_age=demo_data.get('building_age'),
+            floor_info=demo_data.get('floor_info'),
+            management_fee=demo_data.get('management_fee'),
+            deposit=demo_data.get('deposit'),
+            key_money=demo_data.get('key_money'),
+            scraped_at=datetime.fromisoformat(demo_data['scraped_at']),
+            source=demo_data['source']
+        )
