@@ -11,6 +11,7 @@ from loguru import logger
 from .base import BaseScraper
 from ..models.property import Property, PropertySearchResult
 from ..utils.text_parser import JapaneseTextParser
+from .demo_data import generate_demo_properties, is_demo_mode_enabled
 
 
 class HomesScraper(BaseScraper):
@@ -30,6 +31,16 @@ class HomesScraper(BaseScraper):
         page: int = 1
     ) -> Optional[PropertySearchResult]:
         """Search for properties on HOMES."""
+        # Check if demo mode is enabled
+        if is_demo_mode_enabled():
+            logger.info("Demo mode enabled - returning demo data")
+            demo_properties = generate_demo_properties("HOMES", area['code'], property_type['code'])
+            return PropertySearchResult(
+                properties=[self._convert_demo_to_property(p) for p in demo_properties],
+                total_count=len(demo_properties),
+                has_next_page=False
+            )
+        
         # Note: This is a placeholder implementation
         # Actual URLs and parsing logic would need to be implemented based on HOMES's structure
         
@@ -43,9 +54,13 @@ class HomesScraper(BaseScraper):
         property_type_code = type_mapping.get(property_type['code'], 'mansion')
         
         # Construct search URL (this is an example - actual URL structure may differ)
+        # The current pattern returns 404 errors and likely needs to be updated
         search_url = f"{self.base_url}/chintai/{property_type_code}/tokyo/{area['code']}/"
         if page > 1:
             search_url += f"?page={page}"
+            
+        logger.warning(f"Using placeholder URL pattern: {search_url}")
+        logger.info("If this returns 404, the URL pattern needs to be updated based on HOMES's actual URL structure")
             
         response = self._make_request(search_url)
         if not response:
@@ -73,10 +88,22 @@ class HomesScraper(BaseScraper):
         """Parse property list from HOMES search results."""
         properties = []
         
+        # PLACEHOLDER IMPLEMENTATION - Needs real CSS selectors
+        logger.warning("HOMES scraper is using placeholder CSS selectors. Please update with actual selectors from HOMES website.")
+        logger.info("To fix: Inspect HOMES's HTML and update selectors like 'div.mod-mergeBuilding' with real ones")
+        
         # This is a placeholder - actual selectors would need to be determined
         # by inspecting HOMES's HTML structure
         property_items = soup.find_all('div', class_='mod-mergeBuilding')
         
+        if not property_items:
+            logger.info("No properties found. This is expected with placeholder selectors.")
+            logger.info("Next steps:")
+            logger.info("1. Visit https://www.homes.co.jp and search for properties in Tokyo")
+            logger.info("2. Verify the correct URL pattern (current pattern may be incorrect)")
+            logger.info("3. Inspect the HTML to find the actual CSS selectors")
+            logger.info("4. Update this scraper with the correct URL pattern and selectors")
+            
         for item in property_items:
             try:
                 # Extract basic information from list view
@@ -227,3 +254,23 @@ class HomesScraper(BaseScraper):
                     'distance': f"徒歩{match.group(2)}分"
                 }
         return {}
+    
+    def _convert_demo_to_property(self, demo_data: Dict[str, Any]) -> Property:
+        """Convert demo data to Property model."""
+        return Property(
+            id=demo_data['id'],
+            url=demo_data['url'],
+            title=demo_data['title'],
+            rent=demo_data['rent'],
+            floor_plan=demo_data['floor_plan'],
+            area=demo_data['area'],
+            address=demo_data['address'],
+            station_info=demo_data['station_info'],
+            building_age=demo_data.get('building_age'),
+            floor_info=demo_data.get('floor_info'),
+            management_fee=demo_data.get('management_fee'),
+            deposit=demo_data.get('deposit'),
+            key_money=demo_data.get('key_money'),
+            scraped_at=datetime.fromisoformat(demo_data['scraped_at']),
+            source=demo_data['source']
+        )
